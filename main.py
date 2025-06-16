@@ -34,8 +34,8 @@ class VFNData(BaseModel):
 
 # --- Inicialización del Servidor ---
 app = FastAPI(title="Calculadora Financiera API")
-app.mount("/static", StaticFiles(directory="Calculadora_VFN/static"), name="static")
-templates = Jinja2Templates(directory="Calculadora_VFN/templates")
+app.mount("/static", StaticFiles(directory="frontend_calculadora/static"), name="static")
+templates = Jinja2Templates(directory="frontend_calculadora/templates")
 
 # --- Rutas de las Páginas HTML ---
 @app.get("/", response_class=HTMLResponse)
