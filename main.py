@@ -1,17 +1,22 @@
 # ===================================================================================
 #  Archivo: main.py
 #  Propósito: "Cerebro" del servidor. Realiza todos los cálculos financieros.
-#  Versión Mejorada: 2.1 (Más Robusta)
+#  Versión Definitiva: 8.0 (Fórmulas Numéricamente Estables y Lógica Verificada)
 # ===================================================================================
 
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from pydantic import BaseModel, Field
-from typing import Dict, Any, List, Optional
+from pydantic import BaseModel
+from typing import List, Optional
+import math
+from decimal import Decimal, getcontext
 
-# --- Modelos de Datos con Pydantic ---
+# Configura la precisión decimal para cálculos financieros exactos
+getcontext().prec = 15
+
+# --- Modelos de Datos ---
 class Flujos(BaseModel):
     constante: Optional[float] = None
     inicial: Optional[float] = None
@@ -27,8 +32,8 @@ class VFNData(BaseModel):
     tipoFlujo: str
     flujos: Flujos
 
-# --- Inicialización de la Aplicación ---
-app = FastAPI()
+# --- Inicialización del Servidor ---
+app = FastAPI(title="Calculadora Financiera API")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
@@ -44,76 +49,56 @@ def vfn_info(request: Request):
 # --- Funciones de Cálculo Financiero ---
 
 def calcular_tasa_efectiva_anual(tasa_nominal_porc, periodo_cap):
-    """Calcula la tasa efectiva anual a partir de una tasa nominal y su capitalización."""
-    tasa_nominal = tasa_nominal_porc / 100.0
+    """Calcula la tasa efectiva anual a partir de una tasa nominal."""
+    tasa_nominal = Decimal(tasa_nominal_porc) / Decimal(100)
     m_map = {"anual": 1, "semestral": 2, "trimestral": 4, "mensual": 12}
-    m = m_map.get(periodo_cap, 1)
-    tasa_efectiva = (1 + tasa_nominal / m) ** m - 1
-    return tasa_efectiva
+    m = Decimal(m_map.get(periodo_cap, 1))
+    return (Decimal(1) + tasa_nominal / m) ** m - Decimal(1)
 
-def calcular_van(datos: VFNData, i: float):
-    """Calcula el Valor Actual Neto (VAN) del proyecto."""
-    if i == -1:
-        # Manejo especial para TIR donde i puede ser -100%
-        # Aquí se debería implementar una lógica específica si fuera necesario,
-        # pero para VAN es un caso extremo que indica un error o una situación no viable.
-        return -float('inf')
-
-    van = -datos.inversion
+def generar_flujos_operativos(datos: VFNData) -> List[Decimal]:
+    """Genera una lista de los flujos de caja operativos de cada año."""
     n = datos.vidaUtil
-    
-    if datos.salvamento > 0:
-        van += datos.salvamento / ((1 + i) ** n)
+    flujos_operativos = []
 
-    tipo_flujo = datos.tipoFlujo
-    flujos = datos.flujos
+    if datos.tipoFlujo == "constante":
+        A = Decimal(datos.flujos.constante or 0)
+        flujos_operativos = [A] * n
+    elif datos.tipoFlujo == "gradienteAritmetico":
+        A1 = Decimal(datos.flujos.inicial or 0)
+        G = Decimal(datos.flujos.gradiente or 0)
+        # La forma correcta: el gradiente G empieza a aplicarse desde el segundo año.
+        flujos_operativos = [A1 + Decimal(t) * G for t in range(n)]
+    elif datos.tipoFlujo == "irregular":
+        flujos_operativos = [Decimal(f or 0) for f in (datos.flujos.irregulares or [])]
+        flujos_operativos.extend([Decimal(0)] * (n - len(flujos_operativos)))
 
-    # La lógica de cálculo ahora es más segura, usando 0 si el valor no viene.
-    if tipo_flujo == "constante":
-        A = flujos.constante or 0
-        if i > 0:
-            termino_pa = (((1 + i) ** n) - 1) / (i * ((1 + i) ** n))
-            van += A * termino_pa
-        else: # Si la tasa es 0, el valor presente es simplemente A * n
-            van += A * n
+    return flujos_operativos
 
-    elif tipo_flujo == "gradienteAritmetico":
-        A1 = flujos.inicial or 0
-        G = flujos.gradiente or 0
-        if i > 0:
-            termino_pa = (((1 + i) ** n) - 1) / (i * ((1 + i) ** n))
-            van += A1 * termino_pa
-            
-            termino_pg = ((((1 + i) ** n) - (i * n) - 1)) / ((i ** 2) * ((1 + i) ** n))
-            van += G * termino_pg
-        else: # Caso especial si tasa es 0
-            van += A1 * n
-            van += (G * n * (n - 1)) / 2
-
-    elif tipo_flujo == "irregular":
-        if flujos.irregulares:
-            for t, flujo_val in enumerate(flujos.irregulares):
-                flujo_t = flujo_val or 0
-                van += flujo_t / ((1 + i) ** (t + 1))
-            
-    return van
-
-# --- API Endpoint para el Cálculo Principal ---
-
+# --- API Endpoint Principal ---
 @app.post("/api/vfn")
 async def endpoint_calcular_vfn(data: VFNData):
-    """
-    Recibe los datos del proyecto, calcula la tasa efectiva, el VAN y el VFN,
-    y devuelve los resultados.
-    """
     try:
         tasa_efectiva = calcular_tasa_efectiva_anual(data.tasaNominal, data.periodoCap)
-        van = calcular_van(data, tasa_efectiva)
         
-        # El VFN solo se puede calcular si la tasa no es -100%
-        vfn = van * ((1 + tasa_efectiva) ** data.vidaUtil) if tasa_efectiva > -1 else -float('inf')
+        # 1. Generar la lista de flujos de caja operativos.
+        flujos_operativos = generar_flujos_operativos(data)
+        
+        # 2. Construir la lista completa de flujos netos, incluyendo inversión y salvamento.
+        flujos_netos_totales = [Decimal(-data.inversion)]  # Año 0: Inversión
+        flujos_netos_totales.extend(flujos_operativos)   # Años 1 a n: Flujos operativos
+        
+        if data.vidaUtil > 0 and data.salvamento != 0:
+            flujos_netos_totales[data.vidaUtil] += Decimal(data.salvamento) # Sumar salvamento al flujo del último año
 
-        return JSONResponse({"van": van, "vfn": vfn})
+        # 3. Calcular VAN y VFN usando los flujos netos totales.
+        n = data.vidaUtil
+        van = sum(flujo / ((Decimal(1) + tasa_efectiva) ** t) for t, flujo in enumerate(flujos_netos_totales))
+        vfn = sum(flujo * ((Decimal(1) + tasa_efectiva) ** (n - t)) for t, flujo in enumerate(flujos_netos_totales))
+
+        return JSONResponse({
+            "van": float(round(van, 2)),
+            "vfn": float(round(vfn, 2)),
+        })
     except Exception as e:
-        # Devuelve un error claro si algo sale mal en el servidor.
         raise HTTPException(status_code=400, detail=f"Error en el servidor: {e}")
+
