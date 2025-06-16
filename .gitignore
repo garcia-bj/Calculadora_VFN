@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.python-version
+*.egg-info/
+.pytest_cache/
+
+# Ignorar archivos temporales y de logs
+*.log
+*.tmp
+*.swp
+*.swo
+
+# Ignorar directorios de IDE/OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Archivos de configuración local (si los tuvieras y no quieres subirlos)
+# .env
+# config_local.py
+
+# Directorios de build/dist (si en un futuro compilaras tu frontend)
+# dist/
+# build/
+
+# Ignorar artefactos específicos de despliegue si los generaran Vercel/Render en local
+.vercel/
+.render/

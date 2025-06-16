@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calculadora de Proyectos de Inversión (VAN y VFN)</title>
+    <link rel="stylesheet" href="/static/styles.css">
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <a href="/info" class="back-arrow" title="Volver a información">
+        <span>&larr;</span> <span class="back-text">Info</span>
+    </a>
+
+    <div class="container animate-fade-in">
+        <h1 class="title">Calculadora de <span class="highlight">Proyectos</span></h1>
+        <form id="formulario" class="form animate-slide-up">
+            <fieldset class="form-section">
+                <legend>1. Datos Fundamentales</legend>
+                <label>Inversión Inicial ($):<input type="number" step="any" min="0" id="inversion" placeholder="Ej: 10000" required></label>
+                <label>Vida Útil del Proyecto (Años):<input type="number" min="1" id="vidaUtil" placeholder="Ej: 5" required></label>
+                <label>Valor de Salvamento ($) (Opcional):<input type="number" step="any" min="0" id="salvamento" placeholder="Ej: 1500" value="0"></label>
+            </fieldset>
+            <fieldset class="form-section">
+                <legend>2. Tasa de Interés (TMAR)</legend>
+                <div class="tasa-grid">
+                    <label>Tasa Nominal (%):<input type="number" step="any" min="0" id="tasaNominal" placeholder="Ej: 10" required></label>
+                    <label>Periodo de Tasa:<select id="periodoTasa"><option value="anual" selected>Anual</option></select></label>
+                    <label>Capitalización:<select id="periodoCap"><option value="anual">Anual</option><option value="semestral" selected>Semestral</option><option value="trimestral">Trimestral</option><option value="mensual">Mensual</option></select></label>
+                </div>
+            </fieldset>
+            <fieldset class="form-section">
+                <legend>3. Flujos de Caja</legend>
+                <div class="chart-container" style="position: relative; height:200px; width:100%; margin-bottom: 1.5rem;">
+                    <canvas id="flujosChart"></canvas>
+                </div>
+                <label>Tipo de Flujo de Caja:
+                    <select id="tipoFlujo">
+                        <option value="constante">Flujos Constantes (Anualidad)</option>
+                        <option value="gradienteAritmetico">Gradiente Aritmético</option>
+                        <option value="irregular">Flujos Irregulares</option>
+                    </select>
+                </label>
+                <div id="flujosDinamicosContainer"></div>
+            </fieldset>
+            <div class="botones-form">
+                <button type="submit">Calcular VAN y VFN</button>
+                <button type="button" id="borrar">Borrar</button>
+            </div>
+        </form>
+        <div id="resultado" class="resultado"></div>
+    </div>
+    <script src="/static/app.js"></script>
+</body>
+</html>
