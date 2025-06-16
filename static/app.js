@@ -1,55 +1,124 @@
-// Este archivo controla la interacción de la calculadora de Valor Futuro Neto (VFN) en la página web.
-// Está pensado para que cualquier persona pueda entender cómo funciona, aunque no tenga experiencia en programación.
+// ===================================================================================
+//  Archivo: app.js
+//  Propósito: Controla toda la interacción y lógica del frontend de la calculadora.
+//  Versión Mejorada: 2.3 (CON DEPURACIÓN)
+// ===================================================================================
 
-// Espera a que la página esté completamente cargada antes de ejecutar el código
-// Esto asegura que todos los elementos del formulario existen y están listos para usarse
-//
 document.addEventListener('DOMContentLoaded', () => {
-    // Obtenemos el formulario y el área donde se mostrará el resultado
+    
+    console.log("DOM Cargado. Inicializando script...");
+
+    // --- Selección de Elementos del DOM ---
     const form = document.getElementById('formulario');
-    const resultado = document.getElementById('resultado');
+    const resultadoDiv = document.getElementById('resultado');
+    const tipoFlujoSelect = document.getElementById('tipoFlujo');
+    const flujosDinamicosContainer = document.getElementById('flujosDinamicosContainer');
+    const vidaUtilInput = document.getElementById('vidaUtil');
+    const btnBorrar = document.getElementById('borrar');
 
-    // Cuando el usuario hace clic en "Calcular" (envía el formulario):
+    function getNumericValue(elementId, defaultValue = 0) {
+        const element = document.getElementById(elementId);
+        if (!element) {
+            console.error(`Error Crítico: No se encontró el elemento con id: ${elementId}`);
+            return defaultValue;
+        }
+        const value = element.value;
+        const parsedValue = parseFloat(value);
+        return isNaN(parsedValue) ? defaultValue : parsedValue;
+    }
+
+    tipoFlujoSelect.addEventListener('change', actualizarCamposDeFlujo);
+    vidaUtilInput.addEventListener('input', actualizarCamposDeFlujo);
+
+    function actualizarCamposDeFlujo() {
+        flujosDinamicosContainer.innerHTML = '';
+        const tipoFlujo = tipoFlujoSelect.value;
+        const vidaUtil = parseInt(vidaUtilInput.value) || 0;
+        let camposHTML = '';
+        switch (tipoFlujo) {
+            case 'constante':
+                camposHTML = `<label>Monto del Flujo Neto Constante ($):<input type="number" step="any" id="flujoConstante" class="flujo-input" placeholder="Ej: 2500" required></label>`;
+                break;
+            case 'gradienteAritmetico':
+                camposHTML = `<label>Flujo Neto del Primer Año ($):<input type="number" step="any" id="flujoInicialGradiente" class="flujo-input" placeholder="Ej: 2000" required></label><label>Incremento Fijo por Año ($) (Gradiente):<input type="number" step="any" id="gradiente" class="flujo-input" placeholder="Ej: 250 (puede ser negativo)" required></label>`;
+                break;
+            case 'irregular':
+                for (let i = 1; i <= vidaUtil; i++) {
+                    camposHTML += `<label>Flujo Neto del Año ${i} ($):<input type="number" step="any" id="flujo_anual_${i}" class="flujo-input" required></label>`;
+                }
+                break;
+        }
+        flujosDinamicosContainer.innerHTML = camposHTML;
+    }
+
     form.addEventListener('submit', async (e) => {
-        e.preventDefault(); // Evita que la página se recargue automáticamente
-        resultado.classList.remove('visible'); // Oculta el resultado anterior
-        resultado.textContent = ''; // Limpia el texto del resultado anterior
+        e.preventDefault();
+        console.log("Botón 'Calcular' presionado. Iniciando proceso...");
+        resultadoDiv.classList.remove('visible');
+        resultadoDiv.innerHTML = '';
 
-        // Tomamos los valores que el usuario ingresó en los campos
-        const flujo = document.getElementById('flujo').value; // El flujo de caja
-        const tasa = document.getElementById('tasa').value; // La tasa de descuento
-        const periodos = document.getElementById('periodos').value; // El número de periodos
+        console.log("Iniciando recolección de datos del formulario...");
+        const datos = {
+            inversion: getNumericValue('inversion'),
+            vidaUtil: parseInt(getNumericValue('vidaUtil', 1)),
+            salvamento: getNumericValue('salvamento'),
+            tasaNominal: getNumericValue('tasaNominal'),
+            periodoCap: document.getElementById('periodoCap').value,
+            tipoFlujo: tipoFlujoSelect.value,
+            flujos: {}
+        };
+        console.log("Datos estáticos recolectados:", datos);
 
-        // Creamos un objeto con los datos para enviar al servidor
-        const datos = { flujo, tasa, periodos };
+        const tipoFlujo = datos.tipoFlujo;
+        if (tipoFlujo === 'constante') {
+            datos.flujos.constante = getNumericValue('flujoConstante');
+        } else if (tipoFlujo === 'gradienteAritmetico') {
+            datos.flujos.inicial = getNumericValue('flujoInicialGradiente');
+            datos.flujos.gradiente = getNumericValue('gradiente');
+        } else if (tipoFlujo === 'irregular') {
+            datos.flujos.irregulares = [];
+            for (let i = 1; i <= datos.vidaUtil; i++) {
+                datos.flujos.irregulares.push(getNumericValue(`flujo_anual_${i}`));
+            }
+        }
+        console.log("Datos completos recolectados:", datos);
 
+        console.log("Enviando datos al servidor...");
         try {
-            // Enviamos los datos al servidor usando una petición POST
-            // El servidor hace el cálculo y nos regresa el resultado
             const res = await fetch('/api/vfn', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(datos) // Convertimos los datos a texto para enviarlos
+                body: JSON.stringify(datos)
             });
-            const data = await res.json(); // Recibimos la respuesta del servidor y la convertimos a objeto
+            console.log("Respuesta del servidor recibida. Estado:", res.status);
 
-            // Mostramos el resultado al usuario, ya con el cálculo hecho
-            resultado.textContent = `Valor Futuro Neto: $${data.vfn}`;
-            resultado.classList.add('visible'); // Hace visible el recuadro del resultado
+            if (!res.ok) {
+                const errorData = await res.json();
+                console.error("El servidor respondió con un error:", errorData);
+                throw new Error(errorData.detail || 'Error del servidor');
+            }
+
+            const data = await res.json();
+            console.log("Datos calculados recibidos:", data);
+            
+            let resultadoHTML = `<p><strong>Valor Actual Neto (VAN):</strong> $${data.van.toLocaleString('es-BO', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p><p><strong>Valor Futuro Neto (VFN):</strong> $${data.vfn.toLocaleString('es-BO', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p><p class="recomendacion ${data.van > 0 ? 'positivo' : 'negativo'}">${data.van > 0 ? '✅ Proyecto Recomendado' : '❌ Proyecto No Recomendado'}</p>`;
+            resultadoDiv.innerHTML = resultadoHTML;
+            resultadoDiv.classList.add('visible');
+
         } catch (error) {
-            // Si ocurre un error (por ejemplo, el servidor no responde), avisamos al usuario
-            resultado.textContent = 'Error al calcular. Intenta de nuevo.';
-            resultado.classList.add('visible');
+            console.error("Error durante la petición fetch:", error);
+            resultadoDiv.innerHTML = `<p style="color: #ffbaba;"><strong>Error:</strong> ${error.message}</p>`;
+            resultadoDiv.classList.add('visible');
         }
     });
 
-    // Funcionalidad del botón "Borrar":
-    // Cuando el usuario hace clic en "Borrar", se limpian todos los campos y el resultado
-    const btnBorrar = document.getElementById('borrar');
     btnBorrar.addEventListener('click', () => {
-        form.reset(); // Limpia todos los campos del formulario
-        resultado.classList.remove('visible'); // Oculta el resultado
-        resultado.textContent = '';
-        document.getElementById('flujo').focus(); // Pone el cursor en el primer campo para facilitar el ingreso de nuevos datos
+        form.reset();
+        resultadoDiv.classList.remove('visible');
+        resultadoDiv.innerHTML = '';
+        actualizarCamposDeFlujo();
+        document.getElementById('inversion').focus();
     });
+
+    actualizarCamposDeFlujo();
 });
